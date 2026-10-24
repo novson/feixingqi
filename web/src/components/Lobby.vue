@@ -4,7 +4,7 @@ import { MAX_PLAYERS, MIN_PLAYERS } from '../services/rules.js'
 
 const props = defineProps({
   rooms: { type: Array, default: () => [] },
-  activeRoom: { type: Object, default: null },
+  resumable: { type: Object, default: null },
   busy: { type: Boolean, default: false }
 })
 
@@ -48,12 +48,11 @@ function phaseLabel(phase) {
 
 <template>
   <div class="grid lobby">
-    <div v-if="props.activeRoom" class="card notice-card">
+    <div v-if="props.resumable" class="card notice-card">
       <div class="row">
-        <strong>你还在房间「{{ props.activeRoom.room.name }}」</strong>
-        <span class="tag">{{ phaseLabel(props.activeRoom.room.phase) }}</span>
+        <strong>你还在房间「{{ props.resumable.roomName || '未命名房间' }}」</strong>
         <span class="spacer"></span>
-        <button @click="emit('enter', props.activeRoom.roomId)">回到房间</button>
+        <button @click="emit('enter', props.resumable.roomId)">回到房间</button>
       </div>
     </div>
 

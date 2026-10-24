@@ -3,15 +3,16 @@ import { CENTER, CELL, MARGIN, SPAN, cellCenter, hangarSlots, homeLaneSlots, hom
 import { TRACK } from './rules.js'
 
 describe('外圈格子', () => {
-  it('每边 14 格，四个角落在正方形角上', () => {
-    const topLeft = cellCenter(0)
-    const topRight = cellCenter(14)
-    const bottomRight = cellCenter(28)
-    const bottomLeft = cellCenter(42)
-    expect(topRight.x).toBeGreaterThan(topLeft.x)
-    expect(topLeft.y).toBeCloseTo(topRight.y, 5)
-    expect(bottomRight.y).toBeGreaterThan(topRight.y)
-    expect(bottomLeft.x).toBeCloseTo(topLeft.x, 5)
+  it('每边 14 格，四条边分别贴着正方形的四条边', () => {
+    // 0–13 上边、14–27 右边、28–41 下边、42–55 左边
+    expect(cellCenter(0).y).toBeCloseTo(MARGIN, 5)
+    expect(cellCenter(13).y).toBeCloseTo(MARGIN, 5)
+    expect(cellCenter(14).x).toBeCloseTo(MARGIN + SPAN, 5)
+    expect(cellCenter(27).x).toBeCloseTo(MARGIN + SPAN, 5)
+    expect(cellCenter(28).y).toBeCloseTo(MARGIN + SPAN, 5)
+    expect(cellCenter(41).y).toBeCloseTo(MARGIN + SPAN, 5)
+    expect(cellCenter(42).x).toBeCloseTo(MARGIN, 5)
+    expect(cellCenter(55).x).toBeCloseTo(MARGIN, 5)
   })
 
   it('格子间距等于边长 / 14', () => {

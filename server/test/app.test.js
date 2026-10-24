@@ -1,18 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { buildApp } from '../src/app.js'
 
 async function harness() {
-  const dir = await mkdtemp(join(tmpdir(), 'fly-app-'))
-  const app = await buildApp({ accountsFile: join(dir, 'accounts.json') })
+  const app = await buildApp()
   // 测试里不等待真实时间：AI 与超时立即行动
   app.rooms.aiThinkMs = 0
   app.rooms.turnSeconds = 0
   app.rooms.awaySeconds = 0
-  return { app, dir }
+  return { app }
 }
 
 async function post(app, url, payload) {
@@ -21,15 +17,12 @@ async function post(app, url, payload) {
   return JSON.parse(response.body)
 }
 
-test('完整一局：建账号 → 建房 → 开局 → 打完 → 写入战绩', async () => {
-  const { app, dir } = await harness()
+test('完整一局：填昵称建房 → 开局 → 打完 → 分出名次', async () => {
+  const { app } = await harness()
   try {
-    const session = await post(app, '/api/accounts', { nickname: '小明' })
     const created = await post(app, '/api/rooms', {
       name: '周五约局',
       hostNickname: '小明',
-      accountId: session.accountId,
-      accountToken: session.accountToken,
       maxPlayers: 2,
       aiPlayers: 1,
       planesPerPlayer: 2
@@ -70,24 +63,14 @@ test('完整一局：建账号 → 建房 → 开局 → 打完 → 写入战绩
     }
     assert.equal(room.phase, 'FINISHED')
     assert.equal(room.ranking.length, 2)
-
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    const profile = await app.inject({
-      method: 'GET',
-      url: `/api/accounts/${session.accountId}`,
-      headers: { 'x-account-token': session.accountToken }
-    })
-    const data = JSON.parse(profile.body)
-    assert.equal(data.games, 1)
-    assert.equal(data.history[0].roomName, '周五约局')
+    room.players.forEach((player) => assert.ok(player.rank >= 1 && player.rank <= 2))
   } finally {
     await app.close()
-    await rm(dir, { recursive: true, force: true })
   }
 })
 
 test('房间状态通过 WebSocket 推送', async () => {
-  const { app, dir } = await harness()
+  const { app } = await harness()
   const WebSocket = (await import('ws')).default
   try {
     await app.listen({ port: 0, host: '127.0.0.1' })
@@ -131,22 +114,27 @@ test('房间状态通过 WebSocket 推送', async () => {
     assert.equal(states.at(-1).phase, 'PLAYING')
   } finally {
     await app.close()
-    await rm(dir, { recursive: true, force: true })
   }
 })
 
 test('接口错误返回可读的中文提示', async () => {
-  const { app, dir } = await harness()
+  const { app } = await harness()
   try {
-    const response = await app.inject({ method: 'POST', url: '/api/accounts/login', payload: { nickname: '没人', loginCode: 'ABCD-EFGH-IJKL' } })
-    assert.equal(response.statusCode, 400)
-    assert.match(JSON.parse(response.body).error, /账号或跨设备登录码不正确/)
-
     const missing = await app.inject({ method: 'GET', url: '/api/rooms/not-exist' })
     assert.equal(missing.statusCode, 400)
     assert.match(JSON.parse(missing.body).error, /房间不存在/)
+
+    const badToken = await app.inject({
+      method: 'POST',
+      url: '/api/rooms/not-exist/join',
+      payload: { nickname: '小红' }
+    })
+    assert.equal(badToken.statusCode, 400)
+
+    const noNickname = await app.inject({ method: 'POST', url: '/api/rooms', payload: { name: '没昵称' } })
+    assert.equal(noNickname.statusCode, 400)
+    assert.match(JSON.parse(noNickname.body).error, /昵称/)
   } finally {
     await app.close()
-    await rm(dir, { recursive: true, force: true })
   }
 })

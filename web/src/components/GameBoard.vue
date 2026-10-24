@@ -3,6 +3,11 @@ import { computed } from 'vue'
 import {
   CELL,
   CENTER,
+  CLOUDS,
+  GOAL_RADIUS,
+  HANGAR_SIZE,
+  MARGIN,
+  SPAN,
   VIEW,
   airportLines,
   cellCenter,
@@ -33,6 +38,7 @@ const emit = defineEmits(['pick'])
 
 const seats = computed(() => props.room.players.length)
 const planesPerPlayer = computed(() => props.room.planesPerPlayer)
+const cellSize = computed(() => CELL * 0.72)
 
 const cells = computed(() => {
   const count = seats.value
@@ -40,13 +46,16 @@ const cells = computed(() => {
   const airports = new Map(props.room.players.map((player) => [airportCell(player.seat, count), player.seat]))
   return Array.from({ length: TRACK }, (_, index) => {
     const point = cellCenter(index)
+    const startSeat = starts.has(index) ? starts.get(index) : null
+    // 起飞点固定画成该队自己的颜色（经典棋盘的样子）
+    const color = startSeat !== null ? colorOf(startSeat) : COLORS[cellColor(index, count)]
     return {
       index,
       x: point.x,
       y: point.y,
-      hex: COLORS[cellColor(index, count)].hex,
-      soft: COLORS[cellColor(index, count)].soft,
-      startSeat: starts.has(index) ? starts.get(index) : null,
+      hex: color.hex,
+      soft: color.soft,
+      startSeat,
       airportSeat: airports.has(index) ? airports.get(index) : null
     }
   })
@@ -63,32 +72,31 @@ const lanes = computed(() =>
 
 const hangars = computed(() =>
   props.room.players.map((player) => {
-    const { pad, slots } = hangarSlots(player.seat, seats.value, planesPerPlayer.value)
+    const { pad, slots, label } = hangarSlots(player.seat, seats.value, planesPerPlayer.value)
     return {
       seat: player.seat,
       player,
       hex: colorOf(player.seat).hex,
       soft: colorOf(player.seat).soft,
+      name: `${colorOf(player.seat).name}队`,
       pad,
-      slots
+      slots,
+      label
     }
   })
 )
 
-const wedges = computed(() =>
+const goals = computed(() =>
   props.room.players.map((player) => ({
     seat: player.seat,
     hex: colorOf(player.seat).hex,
     soft: colorOf(player.seat).soft,
-    path: goalWedgePath(player.seat, seats.value),
-    label: colorOf(player.seat).name
+    path: goalWedgePath(player.seat, seats.value)
   }))
 )
 
 const flightLines = computed(() =>
-  props.room.players
-    .map((player) => airportLines(player.seat, seats.value, airportCell))
-    .filter(Boolean)
+  props.room.players.map((player) => airportLines(player.seat, seats.value, airportCell)).filter(Boolean)
 )
 
 const myPlayer = computed(() => props.room.players.find((player) => player.id === props.myPlayerId) || null)
@@ -101,7 +109,8 @@ const legalTargets = computed(() => {
   if (!props.interactive || !isMyTurn.value || !myPlayer.value) return []
   return (props.room.legal || []).map((move) => {
     const seat = myPlayer.value.seat
-    if (move.to >= TRACK && move.to < FINISH) return { ...homeLaneSlots(seat, seats.value)[move.to - TRACK], plane: move.plane }
+    if (move.to >= TRACK && move.to < FINISH)
+      return { ...homeLaneSlots(seat, seats.value)[move.to - TRACK], plane: move.plane }
     if (move.to === FINISH) return { ...homeSlot(seat, seats.value, 0), plane: move.plane }
     return { ...cellCenter(absoluteCell(seat, move.to, seats.value)), plane: move.plane }
   })
@@ -121,7 +130,6 @@ const planes = computed(() => {
       })
     })
   })
-  // 同一格上的飞机错开摆放
   const groups = new Map()
   list.forEach((plane) => {
     const key = `${Math.round(plane.point.x)}:${Math.round(plane.point.y)}`
@@ -157,17 +165,50 @@ function pick(plane) {
   if (!plane.clickable) return
   emit('pick', plane.planeIndex)
 }
-
-const cellSize = computed(() => CELL * 0.74)
 </script>
 
 <template>
   <div class="board-wrap">
     <svg :viewBox="`0 0 ${VIEW} ${VIEW}`" class="board" role="img" aria-label="飞行棋棋盘">
-      <rect x="0" y="0" :width="VIEW" :height="VIEW" rx="18" fill="#fff" stroke="#e5e8ef" />
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#eaf4ff" />
+          <stop offset="55%" stop-color="#dcecff" />
+          <stop offset="100%" stop-color="#cfe4fb" />
+        </linearGradient>
+      </defs>
 
-      <!-- 飞机场连线 -->
-      <g class="flight-lines">
+      <!-- 天空背景与云朵 -->
+      <rect x="0" y="0" :width="VIEW" :height="VIEW" rx="20" fill="url(#sky)" />
+      <g class="clouds">
+        <g
+          v-for="(cloud, index) in CLOUDS"
+          :key="`cloud-${index}`"
+          :transform="`translate(${cloud.x} ${cloud.y}) scale(${cloud.scale})`"
+          fill="#ffffff"
+          opacity="0.6"
+        >
+          <circle cx="0" cy="0" r="15" />
+          <circle cx="20" cy="-7" r="20" />
+          <circle cx="42" cy="1" r="14" />
+          <rect x="-13" y="0" width="70" height="15" rx="7" />
+        </g>
+      </g>
+
+      <!-- 棋盘底板 -->
+      <rect
+        :x="MARGIN - 26"
+        :y="MARGIN - 26"
+        :width="SPAN + 52"
+        :height="SPAN + 52"
+        rx="22"
+        fill="#ffffff"
+        fill-opacity="0.72"
+        stroke="#d7e3f4"
+      />
+
+      <!-- 飞机场虚线 -->
+      <g>
         <line
           v-for="(line, index) in flightLines"
           :key="`line-${index}`"
@@ -175,9 +216,9 @@ const cellSize = computed(() => CELL * 0.74)
           :y1="line.from.y"
           :x2="line.to.x"
           :y2="line.to.y"
-          stroke="#b9c0d4"
+          stroke="#9fb0cc"
           stroke-width="2"
-          stroke-dasharray="6 6"
+          stroke-dasharray="7 7"
         />
       </g>
 
@@ -188,8 +229,8 @@ const cellSize = computed(() => CELL * 0.74)
           fill="none"
           :stroke="lane.hex"
           stroke-width="2"
-          stroke-opacity="0.35"
-          stroke-dasharray="4 4"
+          stroke-opacity="0.4"
+          stroke-dasharray="5 5"
         />
         <rect
           v-for="(slot, index) in lane.slots"
@@ -198,10 +239,10 @@ const cellSize = computed(() => CELL * 0.74)
           :y="slot.y - cellSize / 3"
           :width="(cellSize / 3) * 2"
           :height="(cellSize / 3) * 2"
-          rx="4"
+          rx="5"
           :fill="lane.soft"
           :stroke="lane.hex"
-          stroke-opacity="0.3"
+          stroke-opacity="0.45"
         />
       </g>
 
@@ -216,21 +257,22 @@ const cellSize = computed(() => CELL * 0.74)
             rx="6"
             :fill="cell.soft"
             :stroke="cell.hex"
-            stroke-opacity="0.45"
-            stroke-width="cell.startSeat !== null || cell.airportSeat !== null ? 2.4 : 1"
+            :stroke-opacity="cell.startSeat !== null || cell.airportSeat !== null ? 0.85 : 0.4"
+            :stroke-width="cell.startSeat !== null || cell.airportSeat !== null ? 2.4 : 1.2"
           />
+          <!-- 起飞点：白色飞机 -->
+          <g v-if="cell.startSeat !== null" :transform="`translate(${cell.x} ${cell.y})`">
+            <path d="M0,-7.4 L7.4,6 L0,2.9 L-7.4,6 Z" fill="#ffffff" />
+          </g>
+          <!-- 飞机场 -->
           <text
-            v-if="cell.startSeat !== null"
+            v-else-if="cell.airportSeat !== null"
             :x="cell.x"
-            :y="cell.y + 4"
+            :y="cell.y + 5"
             text-anchor="middle"
-            font-size="12"
-            :fill="cell.hex"
-            font-weight="700"
+            font-size="14"
+            opacity="0.85"
           >
-            起
-          </text>
-          <text v-else-if="cell.airportSeat !== null" :x="cell.x" :y="cell.y + 5" text-anchor="middle" font-size="13">
             ✈
           </text>
         </g>
@@ -238,33 +280,73 @@ const cellSize = computed(() => CELL * 0.74)
 
       <!-- 中心大本营 -->
       <g>
-        <g v-for="wedge in wedges" :key="`wedge-${wedge.seat}`">
-          <path :d="wedge.path" :fill="wedge.soft" :stroke="wedge.hex" stroke-opacity="0.25" />
-        </g>
-        <circle :cx="CENTER" :cy="CENTER" r="46" fill="none" stroke="#c9cfdd" stroke-width="2" />
-        <text :x="CENTER" :y="CENTER + 4" text-anchor="middle" font-size="12" fill="#6b7280">终点</text>
+        <circle :cx="CENTER" :cy="CENTER" :r="GOAL_RADIUS + 5" fill="#ffffff" />
+        <path v-for="goal in goals" :key="`goal-${goal.seat}`" :d="goal.path" :fill="goal.soft" :stroke="goal.hex" stroke-opacity="0.35" />
+        <circle :cx="CENTER" :cy="CENTER" :r="GOAL_RADIUS" fill="none" stroke="#b9c8de" stroke-width="2.5" />
       </g>
 
-      <!-- 机库 -->
+      <!-- 四角机库 -->
       <g v-for="hangar in hangars" :key="`hangar-${hangar.seat}`">
-        <circle :cx="hangar.pad.x" :cy="hangar.pad.y" r="30" :fill="hangar.soft" :stroke="hangar.hex" stroke-opacity="0.4" />
+        <rect
+          :x="hangar.pad.x - HANGAR_SIZE / 2"
+          :y="hangar.pad.y - HANGAR_SIZE / 2"
+          :width="HANGAR_SIZE"
+          :height="HANGAR_SIZE"
+          rx="18"
+          :fill="hangar.hex"
+          fill-opacity="0.92"
+        />
+        <rect
+          :x="hangar.pad.x - HANGAR_SIZE / 2 + 6"
+          :y="hangar.pad.y - HANGAR_SIZE / 2 + 6"
+          :width="HANGAR_SIZE - 12"
+          :height="HANGAR_SIZE - 12"
+          rx="14"
+          fill="none"
+          stroke="#ffffff"
+          stroke-opacity="0.85"
+          stroke-dasharray="5 5"
+        />
         <circle
           v-for="(slot, index) in hangar.slots"
           :key="`hangar-slot-${hangar.seat}-${index}`"
           :cx="slot.x"
           :cy="slot.y"
-          r="7"
-          :fill="hangar.hex"
-          fill-opacity="0.25"
+          r="9.5"
+          fill="#ffffff"
+          fill-opacity="0.2"
+          stroke="#ffffff"
+          stroke-opacity="0.55"
         />
-        <text :x="hangar.pad.x" :y="hangar.pad.y + 46" text-anchor="middle" font-size="12" :fill="hangar.hex">
-          {{ hangar.player.nickname }}
+        <text
+          :x="hangar.label.x"
+          :y="hangar.label.y"
+          text-anchor="middle"
+          font-size="13"
+          font-weight="700"
+          :fill="hangar.hex"
+        >
+          {{ hangar.name }}
         </text>
       </g>
 
+      <!-- 装饰标题 -->
+      <text :x="CENTER" :y="VIEW - 20" text-anchor="middle" font-size="15" font-weight="700" fill="#7d93b5">
+        飞行棋 Fly Chess
+      </text>
+
       <!-- 可走位提示 -->
       <g v-for="target in legalTargets" :key="`target-${target.plane}`">
-        <circle :cx="target.x" :cy="target.y" r="15" fill="none" stroke="#3e63dd" stroke-width="2" stroke-dasharray="4 4" class="pulse" />
+        <circle
+          :cx="target.x"
+          :cy="target.y"
+          r="16"
+          fill="none"
+          stroke="#1f2430"
+          stroke-width="2"
+          stroke-dasharray="4 4"
+          class="pulse"
+        />
       </g>
 
       <!-- 飞机 -->
@@ -275,9 +357,9 @@ const cellSize = computed(() => CELL * 0.74)
         :class="['plane', plane.clickable && 'clickable']"
         @click="pick(plane)"
       >
-        <circle v-if="plane.clickable" r="14" fill="none" stroke="#3e63dd" stroke-width="2" class="pulse" />
-        <circle r="10.5" :fill="plane.hex" stroke="#fff" stroke-width="2" />
-        <path d="M0,-5.2 L5.1,4.2 L0,2.1 L-5.1,4.2 Z" fill="#fff" fill-opacity="0.95" />
+        <circle v-if="plane.clickable" r="15" fill="none" stroke="#1f2430" stroke-width="2" class="pulse" />
+        <circle r="11" :fill="plane.hex" stroke="#ffffff" stroke-width="2.2" />
+        <path d="M0,-5.4 L5.3,4.3 L0,2.1 L-5.3,4.3 Z" fill="#ffffff" fill-opacity="0.95" />
       </g>
     </svg>
   </div>
@@ -292,8 +374,7 @@ const cellSize = computed(() => CELL * 0.74)
   width: 100%;
   height: auto;
   display: block;
-  border-radius: 16px;
-  background: #fff;
+  border-radius: 20px;
 }
 
 .plane {
@@ -305,7 +386,7 @@ const cellSize = computed(() => CELL * 0.74)
 }
 
 .plane.clickable:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.12);
 }
 
 .pulse {
@@ -316,11 +397,9 @@ const cellSize = computed(() => CELL * 0.74)
   0%,
   100% {
     opacity: 0.35;
-    transform: scale(1);
   }
   50% {
     opacity: 1;
-    transform: scale(1.08);
   }
 }
 </style>

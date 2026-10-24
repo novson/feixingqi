@@ -1,21 +1,21 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import AuthPanel from './components/AuthPanel.vue'
+import { computed, onMounted, ref } from 'vue'
 import Lobby from './components/Lobby.vue'
-import ProfilePanel from './components/ProfilePanel.vue'
+import NicknameGate from './components/NicknameGate.vue'
 import RoomView from './components/RoomView.vue'
 import { api } from './services/api.js'
-import { clearAccount, readAccount, saveAccount } from './services/account.js'
+import { clearNickname, readNickname, saveNickname } from './services/nickname.js'
 import { clearSession, readSession, saveSession } from './services/session.js'
 
-const account = ref(readAccount())
+const nickname = ref(readNickname())
 const session = ref(readSession())
 const rooms = ref([])
-const activeRoom = ref(null)
 const view = ref('lobby')
 const busy = ref(false)
 const error = ref('')
 const notice = ref('')
+
+const resumable = computed(() => (session.value?.playerId ? session.value : null))
 
 async function refreshRooms() {
   try {
@@ -25,29 +25,16 @@ async function refreshRooms() {
   }
 }
 
-async function refreshActiveRoom() {
-  if (!account.value) return
-  try {
-    activeRoom.value = await api.activeRoom(account.value.accountId, account.value.accountToken)
-  } catch {
-    activeRoom.value = null
-  }
-}
-
-function onAuthenticated(signed) {
-  account.value = saveAccount(signed)
+function onNickname(value) {
+  nickname.value = saveNickname(value)
   error.value = ''
   view.value = 'lobby'
   refreshRooms()
-  refreshActiveRoom()
 }
 
-function logout() {
-  clearAccount()
-  clearSession()
-  account.value = null
-  session.value = null
-  activeRoom.value = null
+function changeNickname() {
+  clearNickname()
+  nickname.value = null
   view.value = 'lobby'
 }
 
@@ -55,12 +42,7 @@ async function createRoom(payload) {
   busy.value = true
   error.value = ''
   try {
-    const result = await api.createRoom({
-      ...payload,
-      hostNickname: account.value.nickname,
-      accountId: account.value.accountId,
-      accountToken: account.value.accountToken
-    })
+    const result = await api.createRoom({ ...payload, hostNickname: nickname.value })
     session.value = saveSession({
       roomId: result.room.id,
       playerId: result.playerId,
@@ -87,12 +69,8 @@ async function enterRoom(roomId) {
       return
     }
     const { room: snapshot } = await api.getRoom(roomId)
-    if (snapshot.phase === 'LOBBY' && account.value) {
-      const result = await api.joinRoom(roomId, {
-        nickname: account.value.nickname,
-        accountId: account.value.accountId,
-        accountToken: account.value.accountToken
-      })
+    if (snapshot.phase === 'LOBBY') {
+      const result = await api.joinRoom(roomId, { nickname: nickname.value })
       session.value = saveSession({
         roomId,
         playerId: result.playerId,
@@ -100,6 +78,7 @@ async function enterRoom(roomId) {
         roomName: result.room.name
       })
     } else {
+      // 对局已经开始，只能观战
       session.value = saveSession({ roomId, playerId: '', reconnectToken: '', roomName: snapshot.name })
     }
     view.value = 'room'
@@ -133,7 +112,6 @@ function onLeft() {
   session.value = null
   view.value = 'lobby'
   refreshRooms()
-  refreshActiveRoom()
 }
 
 function onRoomFailed() {
@@ -146,12 +124,20 @@ function onRoomFailed() {
 
 onMounted(async () => {
   await refreshRooms()
-  if (!account.value) return
-  await refreshActiveRoom()
-  if (session.value?.playerId && activeRoom.value) {
+  if (!session.value?.playerId) {
+    if (session.value) clearSession()
+    session.value = null
+    return
+  }
+  // 上次还在房间里，先确认房间是否还在
+  try {
+    await api.resume(session.value.roomId, {
+      playerId: session.value.playerId,
+      reconnectToken: session.value.reconnectToken
+    })
     view.value = 'room'
     notice.value = '已回到上次的房间'
-  } else if (session.value) {
+  } catch {
     clearSession()
     session.value = null
   }
@@ -160,34 +146,23 @@ onMounted(async () => {
 
 <template>
   <div class="app">
-    <header class="row topbar">
+    <header v-if="nickname" class="row topbar">
       <div class="brand">✈️ 在线飞行棋</div>
       <span class="spacer"></span>
-      <template v-if="account">
-        <span class="small muted">{{ account.nickname }}</span>
-        <button class="ghost" @click="view = 'profile'">我的战绩</button>
-        <button class="ghost" @click="logout">退出</button>
-      </template>
+      <span class="small muted">{{ nickname }}</span>
+      <button class="ghost" @click="changeNickname">换个昵称</button>
     </header>
 
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="notice" class="notice">{{ notice }}</p>
 
-    <AuthPanel v-if="!account" @done="onAuthenticated" />
-
-    <ProfilePanel
-      v-else-if="view === 'profile'"
-      :account="account"
-      @back="view = 'lobby'"
-      @account-changed="(next) => (account = saveAccount(next))"
-    />
+    <NicknameGate v-if="!nickname" @done="onNickname" />
 
     <RoomView
       v-else-if="view === 'room' && session"
       :key="session.roomId"
       :room-id="session.roomId"
       :session="session"
-      :account="account"
       @left="onLeft"
       @failed="onRoomFailed"
     />
@@ -195,7 +170,7 @@ onMounted(async () => {
     <Lobby
       v-else
       :rooms="rooms"
-      :active-room="activeRoom"
+      :resumable="resumable"
       :busy="busy"
       @refresh="refreshRooms"
       @create="createRoom"

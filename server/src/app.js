@@ -3,7 +3,6 @@ import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
 import fastifyStatic from '@fastify/static'
-import { AccountError, AccountStore } from './accounts.js'
 import { config } from './config.js'
 import { GameError } from './game.js'
 import { createHub } from './hub.js'
@@ -11,12 +10,10 @@ import { RoomManager } from './rooms.js'
 
 export async function buildApp(options = {}) {
   const app = Fastify({ logger: options.logger ?? false })
-  const accounts = options.accounts || (await new AccountStore(options.accountsFile || config.accountsFile).load())
   const hub = options.hub || createHub()
   const rooms =
     options.rooms ||
     new RoomManager({
-      accounts,
       turnSeconds: config.turnSeconds,
       aiThinkMs: config.aiThinkMs,
       awaySeconds: config.awaySeconds,
@@ -27,53 +24,17 @@ export async function buildApp(options = {}) {
   await app.register(websocket)
 
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof GameError || error instanceof AccountError || error.expose)
-      return reply.code(400).send({ error: error.message })
+    if (error instanceof GameError || error.expose) return reply.code(400).send({ error: error.message })
     if (error.validation) return reply.code(400).send({ error: '请求参数不正确' })
     request.log?.error?.(error)
     return reply.code(500).send({ error: '服务器开小差了' })
   })
 
-  const api = async (handler) => handler
-
-  // ---------- 账号 ----------
-  app.post('/api/accounts', async (request, reply) => {
-    const session = await accounts.create(request.body?.nickname)
-    return reply.code(201).send(session)
-  })
-
-  app.post('/api/accounts/login', async (request) => {
-    return accounts.login(request.body?.nickname, request.body?.loginCode)
-  })
-
-  app.get('/api/accounts/:accountId', async (request) => {
-    return accounts.profile(request.params.accountId, accountToken(request))
-  })
-
-  app.post('/api/accounts/:accountId/login-code', async (request) => {
-    return accounts.rotateLoginCode(request.params.accountId, accountToken(request), request.body?.loginCode)
-  })
-
-  app.get('/api/accounts/:accountId/active-room', async (request, reply) => {
-    await accounts.identity(request.params.accountId, accountToken(request))
-    const active = rooms.activeRoom(request.params.accountId)
-    if (!active) return reply.code(204).send()
-    return active
-  })
-
-  app.get('/api/accounts', async () => ({ accounts: await accounts.list() }))
-
   // ---------- 房间 ----------
   app.get('/api/rooms', async () => ({ rooms: rooms.listRooms() }))
 
   app.post('/api/rooms', async (request, reply) => {
-    const body = request.body || {}
-    let accountId = null
-    if (body.accountId) {
-      const identity = await accounts.identity(body.accountId, body.accountToken || request.headers['x-account-token'])
-      accountId = identity.id
-    }
-    const { game, player } = rooms.createRoom({ ...body, accountId })
+    const { game, player } = rooms.createRoom(request.body || {})
     return reply.code(201).send({
       room: rooms.summary(game),
       playerId: player.id,
@@ -86,19 +47,14 @@ export async function buildApp(options = {}) {
     return { room: game.snapshot() }
   })
 
-  app.post('/api/rooms/:roomId/join', async (request, reply) => {
+  app.post('/api/rooms/:roomId/join', async (request) => {
     const body = request.body || {}
-    let accountId = null
-    if (body.accountId) {
-      const identity = await accounts.identity(body.accountId, body.accountToken || request.headers['x-account-token'])
-      accountId = identity.id
-    }
-    const { game, player } = rooms.joinRoom(request.params.roomId, { nickname: body.nickname, accountId })
-    return reply.code(200).send({
+    const { game, player } = rooms.joinRoom(request.params.roomId, { nickname: body.nickname })
+    return {
       room: game.snapshot(),
       playerId: player.id,
       reconnectToken: player.reconnectToken
-    })
+    }
   })
 
   app.post('/api/rooms/:roomId/ai', async (request) => {
@@ -127,8 +83,7 @@ export async function buildApp(options = {}) {
 
   app.post('/api/rooms/:roomId/leave', async (request) => {
     const body = request.body || {}
-    const result = rooms.leaveRoom(request.params.roomId, body.playerId, body.reconnectToken)
-    return result
+    return rooms.leaveRoom(request.params.roomId, body.playerId, body.reconnectToken)
   })
 
   app.post('/api/rooms/:roomId/resume', async (request) => {
@@ -140,7 +95,7 @@ export async function buildApp(options = {}) {
   app.get('/api/health', async () => ({ ok: true, rooms: rooms.rooms.size }))
 
   // ---------- 实时推送 ----------
-  app.get('/ws', { websocket: true }, (socket, request) => {
+  app.get('/ws', { websocket: true }, (socket) => {
     socket.meta = null
     socket.send(JSON.stringify({ t: 'hello' }))
     socket.on('message', (raw) => {
@@ -164,7 +119,8 @@ export async function buildApp(options = {}) {
           message.reconnectToken,
           message.connected !== false
         )
-        if (player) socket.meta = { roomId: String(message.roomId), playerId: player.id, token: message.reconnectToken }
+        if (player)
+          socket.meta = { roomId: String(message.roomId), playerId: player.id, token: message.reconnectToken }
       }
     })
     socket.on('close', () => {
@@ -184,11 +140,6 @@ export async function buildApp(options = {}) {
   }
 
   app.decorate('rooms', rooms)
-  app.decorate('accounts', accounts)
   app.decorate('hub', hub)
   return app
-}
-
-function accountToken(request) {
-  return request.headers['x-account-token'] || request.body?.accountToken || null
 }

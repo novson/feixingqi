@@ -1,9 +1,8 @@
 // 部署在子路径下（如 /feixingqi/）时 BASE_URL 由 Vite 注入，本地开发为 '/'
 const BASE = `${import.meta.env.BASE_URL || '/'}api`
 
-async function request(path, { method = 'GET', body = undefined, token = null } = {}) {
+async function request(path, { method = 'GET', body = undefined } = {}) {
   const headers = { 'Content-Type': 'application/json' }
-  if (token) headers['X-Account-Token'] = token
   const response = await fetch(`${BASE}${path}`, {
     method,
     headers,
@@ -18,13 +17,6 @@ async function request(path, { method = 'GET', body = undefined, token = null } 
 
 export const api = {
   health: () => request('/health'),
-
-  createAccount: (nickname) => request('/accounts', { method: 'POST', body: { nickname } }),
-  login: (nickname, loginCode) => request('/accounts/login', { method: 'POST', body: { nickname, loginCode } }),
-  profile: (accountId, token) => request(`/accounts/${accountId}`, { token }),
-  rotateLoginCode: (accountId, token, loginCode) =>
-    request(`/accounts/${accountId}/login-code`, { method: 'POST', body: { loginCode }, token }),
-  activeRoom: (accountId, token) => request(`/accounts/${accountId}/active-room`, { token }),
 
   listRooms: () => request('/rooms'),
   createRoom: (payload) => request('/rooms', { method: 'POST', body: payload }),

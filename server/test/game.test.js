@@ -114,7 +114,7 @@ test('快照包含所有玩家与棋盘状态', () => {
   assert.equal(snapshot.players.length, 4)
   assert.deepEqual(
     snapshot.players.map((player) => player.color),
-    ['red', 'orange', 'yellow', 'green']
+    ['red', 'blue', 'yellow', 'green']
   )
   assert.equal(snapshot.seatCount, 4)
   assert.equal(snapshot.planesPerPlayer, 4)

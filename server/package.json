@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "在线飞行棋服务端：房间、规则引擎、AI 托管与无密码账号",
+  "description": "在线飞行棋服务端：房间、规则引擎、AI 托管（昵称入座，无账号密码）",
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",

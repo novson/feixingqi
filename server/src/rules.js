@@ -1,8 +1,8 @@
 /**
  * 飞行棋棋盘数学与规则常量。
  *
- * 棋盘：56 格外圈（4 人时每边 14 格），每格按 玩家数 循环着色 —— 例如 4 人时
- * 格子颜色为 红黄蓝绿红黄蓝绿……，因此「跳棋 = 跳到下一个同色格」在 4 人局
+ * 棋盘：56 格外圈（每边 14 格，四个角即 4 人局的起飞点），每格按 玩家数 循环着色 —— 例如 4 人时
+ * 格子颜色为 红蓝黄绿红蓝黄绿……，因此「跳棋 = 跳到下一个同色格」在 4 人局
  * 正好前进 4 格（经典规则），8 人局前进 8 格，各玩家机会均等。
  *
  * 棋子位置用一个整数表示：
@@ -12,10 +12,13 @@
  *   62        到家
  */
 
+// 56 格外圈：每边 14 格，能被 2 / 4 / 7 / 8 整除，
+// 4 人局起飞点落在四个角（0/14/28/42），8 人局也能完全均分。
 export const TRACK = 56
 export const HOME_LANE = 6
 export const FINISH = TRACK + HOME_LANE
 export const HANGAR = -1
+export const PER_SIDE = TRACK / 4
 
 export const DIE_FACES = 6
 export const TAKEOFF_DIE = 6
@@ -26,13 +29,14 @@ export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 8
 export const DEFAULT_PLANES = 4
 
+// 前四个颜色就是经典四色（红 / 蓝 / 黄 / 绿），4 人局正好落在四个角的机库上
 export const COLORS = [
   { key: 'red', name: '红', hex: '#e5484d', soft: '#fdecec' },
-  { key: 'orange', name: '橙', hex: '#f0761d', soft: '#fdefe1' },
+  { key: 'blue', name: '蓝', hex: '#3e63dd', soft: '#e7ecfb' },
   { key: 'yellow', name: '黄', hex: '#e8a800', soft: '#fdf4da' },
   { key: 'green', name: '绿', hex: '#2fa46b', soft: '#e4f5ec' },
+  { key: 'orange', name: '橙', hex: '#f0761d', soft: '#fdefe1' },
   { key: 'cyan', name: '青', hex: '#12a3c4', soft: '#e2f4fa' },
-  { key: 'blue', name: '蓝', hex: '#3e63dd', soft: '#e7ecfb' },
   { key: 'purple', name: '紫', hex: '#8e4ec6', soft: '#f2e9fa' },
   { key: 'pink', name: '粉', hex: '#e0457f', soft: '#fde8f1' }
 ]
@@ -41,7 +45,11 @@ export function colorOf(seat) {
   return COLORS[((seat % COLORS.length) + COLORS.length) % COLORS.length]
 }
 
-/** 第 seat 位玩家的起飞点（绝对格）。人数变化时不变，保证公平分布。 */
+/**
+ * 第 seat 位玩家的起飞点（绝对格）：沿外圈等距分布。
+ * 56 能被 2/4/7/8 整除，这几种人数下是完美均分；4 人局正好落在四个角（0/14/28/42），
+ * 与棋盘几何的四个角（每边 14 格）重合，也是经典棋盘起飞点的位置。
+ */
 export function startCell(seat, players) {
   const count = Math.max(MIN_PLAYERS, players)
   return Math.round((seat * TRACK) / count) % TRACK

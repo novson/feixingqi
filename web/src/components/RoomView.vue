@@ -7,8 +7,7 @@ import { FINISH, colorOf } from '../services/rules.js'
 
 const props = defineProps({
   roomId: { type: String, required: true },
-  session: { type: Object, required: true },
-  account: { type: Object, default: null }
+  session: { type: Object, required: true }
 })
 
 const emit = defineEmits(['left', 'failed'])

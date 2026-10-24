@@ -1,16 +1,16 @@
 # 在线飞行棋
 
-2–8 人实时在线飞行棋。房间约局、AI 补位、掉线自动托管，账号不用密码 —— 记住「昵称 + 跨设备登录码」就能换设备继续（登录模式沿用 poker-game）。
+2–8 人实时在线飞行棋。房间约局、AI 补位、掉线自动托管。**不设账号密码 —— 填个昵称就能进房间开玩**（昵称存在浏览器本地，刷新/重连自动回座）。
 
 ## 已实现
 
-- **棋盘**：56 格外圈（4 人时每边 14 格，四角即起飞点），每人 2–4 架飞机，6 格终点通道 + 中心大本营
+- **棋盘**：经典十字飞行棋盘（还原参考图）—— 56 格外圈排成正方形，四角是各队停机坪（机库），
+  四条飞机场虚线穿心而过，终点通道从四角内侧斜插进中心四色大本营，天空渐变 + 云朵背景
 - **规则**：掷 6 起飞并连掷（最多 3 次）、落在同色格跳到下一个同色格、落在飞机场沿虚线飞半圈再跳、撞子送回机库、终点需精确点数
-- **人数**：2–8 人同局，棋盘起飞点按人数均匀分布；8 色机队
+- **人数**：2–8 人同局，起飞点按人数沿外圈等距分布（4 人局正好落在四个角）；8 色机队
 - **房间**：4 位房间码加入、房主开局、大厅增减 AI、观战、局中离房自动交 AI 托管
 - **实时**：WebSocket 推送整局快照，断线自动重连；回合超时自动行动（默认 25 秒，离线玩家 5 秒托管）
-- **账号**：无密码账号（昵称 + 12 位登录码，可换成 4 位数字），服务端只存登录码 SHA-256，战绩落盘 JSON
-- **战绩**：场次、夺冠数、胜率、最近 50 局记录
+- **无账号**：昵称 1–16 字即入座，座位身份用 `playerId + reconnectToken` 记在本地，刷新页面自动回座
 
 ## 一键启动
 
@@ -44,7 +44,6 @@ cd web && npm test && npm run build
 |---|---|---|
 | `PORT` | 8080 | 服务端口 |
 | `FLY_ALLOWED_ORIGINS` | `*` | CORS 允许来源，逗号分隔 |
-| `FLY_ACCOUNTS_FILE` | `server/data/accounts.json` | 账号与战绩落盘位置 |
 | `FLY_TURN_SECONDS` | 25 | 玩家回合时限（秒），超时自动行动 |
 | `FLY_AWAY_SECONDS` | 5 | 离线玩家托管前的等待（秒） |
 | `FLY_AI_THINK_MS` | 900 | AI 出手思考时间（毫秒） |
@@ -53,14 +52,9 @@ cd web && npm test && npm run build
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/accounts` | 创建账号，返回跨设备登录码 |
-| POST | `/api/accounts/login` | 昵称 + 登录码登录 |
-| GET | `/api/accounts/{id}` | 个人战绩（需要 `X-Account-Token`） |
-| POST | `/api/accounts/{id}/login-code` | 换登录码（可传 4 位数字） |
-| GET | `/api/accounts/{id}/active-room` | 查询账号是否还在房间里 |
 | GET | `/api/rooms` | 房间列表 |
-| POST | `/api/rooms` | 创建房间（可带账号入座） |
-| POST | `/api/rooms/{id}/join` | 加入房间 |
+| POST | `/api/rooms` | 创建房间（body 带 `hostNickname`） |
+| POST | `/api/rooms/{id}/join` | 加入房间（body 带 `nickname`） |
 | GET | `/api/rooms/{id}` | 房间完整状态 |
 | POST | `/api/rooms/{id}/ai` | 房主调整 AI 数量 |
 | POST | `/api/rooms/{id}/start` | 开局 |
@@ -80,7 +74,6 @@ poker 仍然占用 `/`、`/api/`、`/ws`。飞行棋只监听 `127.0.0.1:18090`�
 | 程序 | `/opt/feixingqi/server`、`/opt/feixingqi/web/dist` |
 | 运行用户 | `feixingqi` |
 | 监听 | `127.0.0.1:18090` |
-| 账号数据 | `/var/lib/feixingqi/accounts.json` |
 | systemd | `/etc/systemd/system/feixingqi.service`（开机自启 + `Restart=always` 故障自动拉起） |
 | nginx | `/etc/nginx/default.d/feixingqi.conf`（`/feixingqi/` → 静态，`/feixingqi/api/`、`/feixingqi/ws` → 反代） |
 
@@ -114,8 +107,8 @@ cd web && npm run build -- --mode subpath
 ## 项目结构
 
 ```text
-server/   Node 后端：规则引擎、房间编排、AI、无密码账号
-web/      Vue 3 前端：登录、大厅、SVG 棋盘
+server/   Node 后端：规则引擎（rules.js）、对局状态机（game.js）、房间编排与 AI（rooms.js/ai.js）
+web/      Vue 3 前端：昵称入口、大厅、SVG 棋盘（services/board.js 是几何的唯一来源）
 Dockerfile / compose.yml  一键部署
 ```
 

@@ -12,7 +12,6 @@ function number(value, fallback) {
 export const config = {
   port: number(process.env.PORT, 8080),
   host: process.env.HOST || '0.0.0.0',
-  accountsFile: process.env.FLY_ACCOUNTS_FILE || join(serverRoot, 'data', 'accounts.json'),
   allowedOrigins: (process.env.FLY_ALLOWED_ORIGINS || '*')
     .split(',')
     .map((origin) => origin.trim())

@@ -17,7 +17,7 @@ npm run build -- --mode subpath
 
 echo "==> 打包"
 cd "$ROOT"
-tar czf "$ARCHIVE" server/src server/package.json server/package-lock.json web/dist
+tar czf "$ARCHIVE" server/src server/package.json server/package-lock.json web/dist deploy
 
 echo "==> 上传到 $HOST"
 scp -i "$KEY" -o StrictHostKeyChecking=no "$ARCHIVE" "$HOST:/tmp/fly-deploy.tgz"
@@ -28,6 +28,11 @@ ssh -i "$KEY" -o StrictHostKeyChecking=no "$HOST" 'set -e
   cd /opt/feixingqi/server
   npm ci --omit=dev --no-audit --no-fund --registry=https://registry.npmmirror.com
   chown -R feixingqi:feixingqi /opt/feixingqi
+  # systemd 单元有更新时同步推送（服务一律由 systemd 托管，不用 nohup）
+  if [ -f /opt/feixingqi/deploy/feixingqi.service ]; then
+    cp /opt/feixingqi/deploy/feixingqi.service /etc/systemd/system/feixingqi.service
+    systemctl daemon-reload
+  fi
   systemctl restart feixingqi.service
   sleep 2
   systemctl --no-pager status feixingqi.service | head -6

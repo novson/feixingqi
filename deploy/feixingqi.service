@@ -15,7 +15,6 @@ Environment=HOST=127.0.0.1
 Environment=PORT=18090
 Environment=FLY_ALLOWED_ORIGINS=http://139.224.254.109
 Environment=FLY_WEB_DIST=/opt/feixingqi/web/dist
-Environment=FLY_ACCOUNTS_FILE=/var/lib/feixingqi/accounts.json
 Environment=FLY_TURN_SECONDS=25
 Environment=FLY_AWAY_SECONDS=5
 Environment=FLY_AI_THINK_MS=900

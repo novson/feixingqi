@@ -70,14 +70,13 @@ export class Game {
     return this.players.filter((player) => player.rank === null)
   }
 
-  addPlayer({ nickname, accountId = null, ai = false }) {
+  addPlayer({ nickname, ai = false }) {
     if (this.phase !== PHASE.LOBBY) throw new GameError('对局已经开始，无法加入')
     if (this.players.length >= this.maxPlayers) throw new GameError('房间已满')
     const player = {
       id: randomUUID(),
       seat: this.players.length,
       nickname,
-      accountId,
       ai,
       reconnectToken: randomUUID(),
       connected: !ai,
@@ -390,7 +389,6 @@ export class Game {
         nickname: player.nickname,
         color: colorOf(player.seat).key,
         ai: player.ai,
-        accountId: player.accountId,
         connected: player.connected,
         planes: [...player.planes],
         rank: player.rank,

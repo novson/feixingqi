@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { chooseMove } from './ai.js'
 import { Game, GameError, PHASE, TURN_STATE } from './game.js'
-import { DEFAULT_PLANES, FINISH, MAX_PLAYERS, MIN_PLAYERS } from './rules.js'
+import { DEFAULT_PLANES, MAX_PLAYERS, MIN_PLAYERS } from './rules.js'
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const FINISHED_ROOM_TTL = 10 * 60 * 1000
@@ -9,11 +9,10 @@ const IDLE_ROOM_TTL = 3 * 60 * 60 * 1000
 
 /**
  * 房间与对局的编排层：负责建房间、入座、开局、回合推进、AI 托管、
- * 超时自动行动、断线恢复，以及把对局结果写入账号战绩。
+ * 超时自动行动与断线恢复。玩家凭昵称入座，座位身份用 playerId + reconnectToken 维持。
  */
 export class RoomManager {
-  constructor({ accounts, turnSeconds = 25, aiThinkMs = 900, awaySeconds = 5, onChange = () => {} } = {}) {
-    this.accounts = accounts
+  constructor({ turnSeconds = 25, aiThinkMs = 900, awaySeconds = 5, onChange = () => {} } = {}) {
     this.rooms = new Map()
     this.turnSeconds = turnSeconds
     this.aiThinkMs = aiThinkMs
@@ -30,12 +29,8 @@ export class RoomManager {
       flyEnabled: options.flyEnabled !== false,
       endOnFirst: options.endOnFirst !== false
     })
-    const host = game.addPlayer({
-      nickname: normalizeNickname(options.hostNickname),
-      accountId: options.accountId || null
-    })
+    const host = game.addPlayer({ nickname: normalizeNickname(options.hostNickname) })
     game.code = this.nextCode()
-    game.createdFor = options.accountId || null
     this.rooms.set(game.id, game)
     this.addAiPlayers(game, clampInt(options.aiPlayers, 0, MAX_PLAYERS - 1, 0))
     this.notify(game)
@@ -76,12 +71,10 @@ export class RoomManager {
     return [...this.rooms.values()].find((game) => game.code === key.toUpperCase()) || null
   }
 
-  joinRoom(roomId, { nickname, accountId = null }) {
+  joinRoom(roomId, { nickname }) {
     const game = this.require(roomId)
     if (game.players.length >= game.maxPlayers) throw new GameError('房间已满')
-    const existing = accountId ? game.players.find((player) => player.accountId === accountId) : null
-    if (existing) return { game, player: existing, resumed: true }
-    const player = game.addPlayer({ nickname: normalizeNickname(nickname), accountId })
+    const player = game.addPlayer({ nickname: normalizeNickname(nickname) })
     this.notify(game)
     return { game, player, resumed: false }
   }
@@ -164,7 +157,6 @@ export class RoomManager {
       const humans = game.players.filter((candidate) => !candidate.ai)
       if (humans.length === 0) {
         game.endGame('所有玩家已离开')
-        this.settle(game)
         this.rooms.delete(game.id)
         return { removed: false, deleted: true }
       }
@@ -186,14 +178,13 @@ export class RoomManager {
     return { game, player }
   }
 
-  activeRoom(accountId) {
-    if (!accountId) return null
-    for (const game of this.rooms.values()) {
-      if (game.phase === PHASE.FINISHED) continue
-      const player = game.players.find((candidate) => candidate.accountId === accountId)
-      if (player) return { roomId: game.id, playerId: player.id, reconnectToken: player.reconnectToken, room: this.summary(game) }
-    }
-    return null
+  /** 用 playerId + reconnectToken 找回自己的座位（刷新或断线后使用）。 */
+  findSeat(roomId, playerId, token) {
+    const game = this.getRoom(roomId)
+    if (!game) return null
+    const player = game.players.find((candidate) => candidate.id === playerId)
+    if (!player || player.reconnectToken !== token) return null
+    return { game, player }
   }
 
   setConnected(roomId, playerId, token, connected) {
@@ -257,29 +248,7 @@ export class RoomManager {
   }
 
   afterAction(game) {
-    if (game.phase === PHASE.FINISHED) this.settle(game)
     this.notify(game)
-  }
-
-  /** 对局结束后把成绩写入账号（只写一次）。 */
-  settle(game) {
-    if (game.settled) return
-    game.settled = true
-    const mode = game.players.some((player) => player.ai) ? 'AI' : 'HUMAN'
-    game.players.forEach((player) => {
-      if (!player.accountId) return
-      this.accounts
-        .recordResult(player.accountId, {
-          roomId: game.id,
-          roomName: game.name,
-          mode,
-          players: game.players.length,
-          rank: player.rank || game.players.length,
-          planesHome: player.planes.filter((position) => position === FINISH).length,
-          at: Date.now()
-        })
-        .catch(() => {})
-    })
   }
 
   addAiPlayers(game, count) {
