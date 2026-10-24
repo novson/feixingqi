@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      # 从其他域名访问时改成前端实际地址，多个来源用英文逗号分隔
+      FLY_ALLOWED_ORIGINS: http://localhost:8080
+      FLY_ACCOUNTS_FILE: /var/lib/feixingqi/accounts.json
+      # AI 思考时间（毫秒）与玩家回合时限（秒）
+      FLY_AI_THINK_MS: 900
+      FLY_TURN_SECONDS: 25
+    ports:
+      - "8080:8080"
+    volumes:
+      - feixingqi-data:/var/lib/feixingqi
+
+volumes:
+  feixingqi-data:
