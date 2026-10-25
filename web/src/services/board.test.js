@@ -1,69 +1,126 @@
 import { describe, expect, it } from 'vitest'
-import { CENTER, CELL, MARGIN, SPAN, cellCenter, hangarSlots, homeLaneSlots, homeSlot, outwardNormal } from './board.js'
-import { TRACK } from './rules.js'
+import {
+  CENTER,
+  CELL,
+  GOAL_RADIUS,
+  MARGIN,
+  RING,
+  VIEW,
+  airportLines,
+  cellCenter,
+  goalWedges,
+  hangarInfo,
+  homeLaneSlots,
+  homeSlot
+} from './board.js'
+import { TRACK, startCell } from './rules.js'
 
-describe('外圈格子', () => {
-  it('每边 14 格，四条边分别贴着正方形的四条边', () => {
-    // 0–13 上边、14–27 右边、28–41 下边、42–55 左边
-    expect(cellCenter(0).y).toBeCloseTo(MARGIN, 5)
-    expect(cellCenter(13).y).toBeCloseTo(MARGIN, 5)
-    expect(cellCenter(14).x).toBeCloseTo(MARGIN + SPAN, 5)
-    expect(cellCenter(27).x).toBeCloseTo(MARGIN + SPAN, 5)
-    expect(cellCenter(28).y).toBeCloseTo(MARGIN + SPAN, 5)
-    expect(cellCenter(41).y).toBeCloseTo(MARGIN + SPAN, 5)
-    expect(cellCenter(42).x).toBeCloseTo(MARGIN, 5)
-    expect(cellCenter(55).x).toBeCloseTo(MARGIN, 5)
+describe('十字轨道', () => {
+  it('共 56 格且互不重复', () => {
+    expect(RING).toHaveLength(TRACK)
+    const keys = new Set(RING.map((point) => `${point.x}:${point.y}`))
+    expect(keys.size).toBe(TRACK)
   })
 
-  it('格子间距等于边长 / 14', () => {
-    const a = cellCenter(0)
-    const b = cellCenter(1)
-    expect(Math.abs(b.x - a.x)).toBeCloseTo(CELL, 5)
-    expect(SPAN).toBeCloseTo(CELL * 14, 5)
+  it('起飞点在四条臂的尖端中格（上 / 右 / 下 / 左）', () => {
+    // 上臂尖端中格
+    expect(cellCenter(startCell(0, 4)).x).toBeCloseTo(CENTER, 5)
+    expect(cellCenter(startCell(0, 4)).y).toBeCloseTo(MARGIN + CELL / 2, 5)
+    // 右臂尖端中格
+    expect(cellCenter(startCell(1, 4)).x).toBeCloseTo(VIEW - MARGIN - CELL / 2, 5)
+    expect(cellCenter(startCell(1, 4)).y).toBeCloseTo(CENTER, 5)
+    // 下臂尖端中格
+    expect(cellCenter(startCell(2, 4)).y).toBeCloseTo(VIEW - MARGIN - CELL / 2, 5)
+    // 左臂尖端中格
+    expect(cellCenter(startCell(3, 4)).x).toBeCloseTo(MARGIN + CELL / 2, 5)
+  })
+
+  it('轨道首尾相接，相邻格距离不超过一格半', () => {
+    for (let index = 0; index < TRACK; index += 1) {
+      const a = cellCenter(index)
+      const b = cellCenter(index + 1)
+      const distance = Math.hypot(b.x - a.x, b.y - a.y)
+      expect(distance).toBeLessThanOrEqual(CELL * 1.5)
+    }
   })
 
   it('所有格子都落在棋盘范围内', () => {
-    for (let index = 0; index < TRACK; index += 1) {
-      const point = cellCenter(index)
+    for (const point of RING) {
       expect(point.x).toBeGreaterThanOrEqual(MARGIN - 1)
-      expect(point.x).toBeLessThanOrEqual(MARGIN + SPAN + 1)
+      expect(point.x).toBeLessThanOrEqual(VIEW - MARGIN + 1)
       expect(point.y).toBeGreaterThanOrEqual(MARGIN - 1)
-      expect(point.y).toBeLessThanOrEqual(MARGIN + SPAN + 1)
+      expect(point.y).toBeLessThanOrEqual(VIEW - MARGIN + 1)
     }
   })
 })
 
-describe('机库与终点', () => {
-  it('机库在棋盘外侧', () => {
-    for (let seat = 0; seat < 8; seat += 1) {
-      const { pad } = hangarSlots(seat, 8, 4)
-      const distance = Math.hypot(pad.x - CENTER, pad.y - CENTER)
-      expect(distance).toBeGreaterThan(SPAN / 2)
-    }
-  })
-
-  it('机库机位数量等于每人飞机数', () => {
-    expect(hangarSlots(0, 4, 2).slots).toHaveLength(2)
-    expect(hangarSlots(0, 4, 4).slots).toHaveLength(4)
-  })
-
-  it('终点通道 6 格，逐渐靠近中心', () => {
+describe('终点通道与大本营', () => {
+  it('终点通道 6 格，沿臂中线逐渐靠近中心，且不进入中心圆盘', () => {
     const slots = homeLaneSlots(0, 4)
     expect(slots).toHaveLength(6)
-    const distances = slots.map((slot) => Math.hypot(slot.x - CENTER, slot.y - CENTER))
-    for (let index = 1; index < distances.length; index += 1)
-      expect(distances[index]).toBeLessThan(distances[index - 1])
+    slots.forEach((slot) => expect(slot.x).toBeCloseTo(CENTER, 5))
+    for (let index = 1; index < slots.length; index += 1)
+      expect(slots[index].y).toBeGreaterThan(slots[index - 1].y)
+    const last = slots[slots.length - 1]
+    expect(Math.hypot(last.x - CENTER, last.y - CENTER)).toBeGreaterThanOrEqual(GOAL_RADIUS)
   })
 
-  it('到家的飞机落在中心区域内', () => {
-    for (let seat = 0; seat < 6; seat += 1) {
-      const slot = homeSlot(seat, 6, 0)
-      expect(Math.hypot(slot.x - CENTER, slot.y - CENTER)).toBeLessThan(48)
+  it('人数 >4 时共用中线的两队通道相互错开', () => {
+    const first = homeLaneSlots(0, 8)
+    const second = homeLaneSlots(7, 8)
+    expect(first).toHaveLength(6)
+    expect(second).toHaveLength(6)
+    // 两队都在上臂中线上，但向两侧对称错开 34
+    expect(Math.abs(first[0].x - second[0].x)).toBeCloseTo(34, 5)
+    expect((first[0].x + second[0].x) / 2).toBeCloseTo(CENTER, 5)
+  })
+
+  it('到家的飞机落在中心圆盘内', () => {
+    for (let seat = 0; seat < 8; seat += 1) {
+      const slot = homeSlot(seat, 8, 0)
+      expect(Math.hypot(slot.x - CENTER, slot.y - CENTER)).toBeLessThan(GOAL_RADIUS)
     }
   })
 
-  it('外法线长度为 1', () => {
-    const normal = outwardNormal(7)
-    expect(Math.hypot(normal.x, normal.y)).toBeCloseTo(1, 6)
+  it('大本营扇区数量等于人数', () => {
+    expect(goalWedges(4)).toHaveLength(4)
+    expect(goalWedges(8)).toHaveLength(8)
+    goalWedges(4).forEach((wedge) => expect(wedge.path).toMatch(/^M /))
+  })
+})
+
+describe('机库与飞机场', () => {
+  it('4 人局机库在四个角上，机位都在机库内', () => {
+    for (let seat = 0; seat < 4; seat += 1) {
+      const info = hangarInfo(seat, 4, 4)
+      expect(info.slots).toHaveLength(4)
+      info.slots.forEach((slot) => {
+        expect(slot.x).toBeGreaterThanOrEqual(info.rect.x)
+        expect(slot.x).toBeLessThanOrEqual(info.rect.x + info.rect.size)
+        expect(slot.y).toBeGreaterThanOrEqual(info.rect.y)
+        expect(slot.y).toBeLessThanOrEqual(info.rect.y + info.rect.size)
+      })
+    }
+  })
+
+  it('8 人局机库都落在画布内', () => {
+    for (let seat = 0; seat < 8; seat += 1) {
+      const info = hangarInfo(seat, 8, 4)
+      expect(info.rect.x).toBeGreaterThanOrEqual(-1)
+      expect(info.rect.y).toBeGreaterThanOrEqual(-1)
+      expect(info.rect.x + info.rect.size).toBeLessThanOrEqual(VIEW + 1)
+      expect(info.rect.y + info.rect.size).toBeLessThanOrEqual(VIEW + 1)
+    }
+  })
+
+  it('4 人局飞机场虚线两两穿心（中点在棋盘中心）', () => {
+    const lines = airportLines(4)
+    expect(lines).toHaveLength(2)
+    lines.forEach((line) => {
+      const midX = (line.from.x + line.to.x) / 2
+      const midY = (line.from.y + line.to.y) / 2
+      expect(midX).toBeCloseTo(CENTER, 5)
+      expect(midY).toBeCloseTo(CENTER, 5)
+    })
   })
 })
