@@ -6,6 +6,9 @@ export const HOME_LANE = 6
 export const FINISH = TRACK + HOME_LANE
 export const HANGAR = -1
 export const TAKEOFF_DIE = 6
+export const MAX_ROLL_STREAK = 3
+// 与服务端一致：双层轨道下飞棋跨 14 格，正好落到棋盘对面一侧的机场
+export const FLY_DISTANCE = TRACK / 4
 export const MAX_PLAYERS = 8
 export const MIN_PLAYERS = 2
 

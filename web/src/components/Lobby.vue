@@ -105,7 +105,7 @@ function phaseLabel(phase) {
         <div class="row switches">
           <label class="switch">
             <input v-model="form.flyEnabled" type="checkbox" />
-            <span>开启飞棋（飞机场跨半圈）</span>
+            <span>开启飞棋（停在飞机场飞到对面）</span>
           </label>
         </div>
         <button :disabled="props.busy" @click="create">创建房间</button>

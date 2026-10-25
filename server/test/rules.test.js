@@ -65,11 +65,11 @@ test('不同色格不触发跳棋', () => {
   assert.deepEqual(landing.effects, [])
 })
 
-test('落在飞机场触发飞棋（半圈）并再前进一个同色间距', () => {
+test('落在飞机场触发飞棋（飞到对面）并再前进一个同色间距', () => {
   const airport = airportCell(0, 4)
   assert.equal(airport, 7)
   const landing = resolveLanding(0, 7, 4, {})
-  assert.equal(landing.position, 7 + 28 + 4)
+  assert.equal(landing.position, 7 + 14 + 4)
   assert.deepEqual(landing.effects, ['FLY', 'JUMP'])
 })
 

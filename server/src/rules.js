@@ -23,7 +23,9 @@ export const PER_SIDE = TRACK / 4
 export const DIE_FACES = 6
 export const TAKEOFF_DIE = 6
 export const MAX_ROLL_STREAK = 3
-export const FLY_DISTANCE = TRACK / 2
+// 棋盘是「外圈 28 格 + 内圈 28 格」的双层结构，机场在每边的中点，
+// 飞棋跨越 14 格正好落到棋盘对面一侧的机场（经典飞棋的「飞到对面」）。
+export const FLY_DISTANCE = TRACK / 4
 
 export const MIN_PLAYERS = 2
 export const MAX_PLAYERS = 8
@@ -55,7 +57,7 @@ export function startCell(seat, players) {
   return Math.round((seat * TRACK) / count) % TRACK
 }
 
-/** 第 seat 位玩家的飞机场（绝对格）：位于自家一侧的中段，飞过去正好半圈。 */
+/** 第 seat 位玩家的飞机场（绝对格）：位于自家一侧的中段，飞过去正好横穿棋盘到对面。 */
 export function airportCell(seat, players) {
   const span = Math.floor(TRACK / Math.max(MIN_PLAYERS, players))
   const offset = Math.max(1, Math.floor(span / 2))
@@ -108,7 +110,7 @@ export function resolveLanding(seat, target, players, options = {}) {
       position += FLY_DISTANCE
       fliesLeft -= 1
       effects.push('FLY')
-      // 飞到对面飞机场后按规则再前进一个同色间距
+      // 飞到对面一侧的机场后按规则再前进一个同色间距
       if (jumpsLeft > 0 && isOnTrack(position) && position + jumpDistance <= FINISH) {
         position += jumpDistance
         jumpsLeft -= 1

@@ -1,144 +1,90 @@
-// 棋盘几何：经典十字飞行棋，按《棋盘.png》还原。
+// 棋盘几何：经典飞行棋（按《棋盘.png》还原）。
 //
-// 结构（15×15 网格）：
-//   - 轨道 = 十字外轮廓共 56 格，每条臂贡献 14 格：
-//     [尖端中格(起飞点), 尖端边格, 外侧 5 格, 斜角格, 内侧 5 格, 尖端边格]
-//     起飞点正好是四条臂的尖端中格（0/14/28/42），与 rules.js 的 startCell 完全一致。
-//   - 四角 block（6×6）：人数 ≤4 时放机库；block 内角那格是轨道的斜角格（4 人局的飞机场）。
-//   - 四条臂的中线：终点通道（6 格，从尖端通向中心圆盘）。
-//   - 中心：大本营圆盘，扇区按座位数均分，扇区朝向各自的臂。
-import { HOME_LANE, TRACK, airportCell, startCell } from './rules.js'
+// 布局（13×13 网格）：
+//   - 四角 3×3 大机库：左上 / 右上 / 右下 / 左下，各队停机坪（白色虚线内框 + 2×2 白圈飞机位）。
+//   - 方形双层轨道：每边 7+7 = 14 格，56 格整；外圈 28 格 + 内圈 28 格，
+//     起飞点落在四条边的中点（外圈上 / 下中点 + 内圈上 / 下中点），与 rules.js 的 startCell 对齐。
+//   - 四条对角彩条：各队从自家机库内角斜插进中心大本营，即终点通道。
+//   - 中心：四色大本营圆盘，扇区朝向各自机库。
+//   - 天空：云朵、装饰飞机、虚线航迹、左边标题、右边口号。
+import { FLY_DISTANCE, HOME_LANE, TRACK, airportCell, startCell } from './rules.js'
 
-export const VIEW = 1120
-export const GRID = 15
-export const CELL = 54
-export const MARGIN = (VIEW - CELL * GRID) / 2
+export const GRID = 13
+export const CELL = 64
+export const MARGIN = 30
+export const VIEW = GRID * CELL + MARGIN * 2
 export const CENTER = VIEW / 2
-export const GOAL_RADIUS = 78
-export const HANGAR_SIZE = CELL * 5
-export const TRACK_CELL = Math.round(CELL * 0.8)
-export const LANE_CELL = Math.round(CELL * 0.58)
+export const GOAL_RADIUS = 76
+export const HANGAR_SIZE = CELL * 3
+export const TRACK_CELL = CELL - 4
+export const LANE_CELL = Math.round(CELL * 0.46)
 
 export function gridPoint(col, row) {
   return { x: MARGIN + (col + 0.5) * CELL, y: MARGIN + (row + 0.5) * CELL }
 }
 
-// 每条臂的 14 个网格坐标：顺时针，从尖端中格（起飞点）开始，收在下一个起飞点前
-const ARMS = [
-  // 上臂：尖端中 → 右 → 沿右侧下行 → 斜角 → 右臂上边向右 → 右臂尖端
-  [[7, 0], [8, 0], [8, 1], [8, 2], [8, 3], [8, 4], [8, 5], [9, 5], [9, 6], [10, 6], [11, 6], [12, 6], [13, 6], [14, 6]],
-  // 右臂：尖端中 → 下 → 沿下边向左 → 斜角 → 下臂右边下行 → 下臂尖端
-  [[14, 7], [14, 8], [13, 8], [12, 8], [11, 8], [10, 8], [9, 8], [9, 9], [8, 9], [8, 10], [8, 11], [8, 12], [8, 13], [8, 14]],
-  // 下臂：尖端中 → 左 → 沿左侧上行 → 斜角 → 左臂下边向左 → 左臂尖端
-  [[7, 14], [6, 14], [6, 13], [6, 12], [6, 11], [6, 10], [6, 9], [5, 9], [5, 8], [4, 8], [3, 8], [2, 8], [1, 8], [0, 8]],
-  // 左臂：尖端中 → 上 → 沿上边向右 → 斜角 → 上臂左边上行 → 回到上臂尖端
-  [[0, 7], [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6], [5, 5], [6, 5], [6, 4], [6, 3], [6, 2], [6, 1], [6, 0]]
+// 56 格轨道（环形顺序）：外圈顺时针 28 格（从上方中点出发）→ 内圈顺时针 28 格（从内圈上方中点出发）
+// 坐标为 [col, row]，0 号格 = 外圈上方中点（起飞点）
+const RING_GRID = [
+  // 外圈 0–27
+  [6, 0], [7, 0], [8, 0], [9, 0],
+  [12, 3], [12, 4], [12, 5], [12, 6], [12, 7], [12, 8], [12, 9],
+  [9, 12], [8, 12], [7, 12], [6, 12], [5, 12], [4, 12], [3, 12],
+  [0, 9], [0, 8], [0, 7], [0, 6], [0, 5], [0, 4], [0, 3],
+  [3, 0], [4, 0], [5, 0],
+  // 内圈 28–55
+  [6, 1], [7, 1], [8, 1], [9, 1],
+  [11, 3], [11, 4], [11, 5], [11, 6], [11, 7], [11, 8], [11, 9],
+  [9, 11], [8, 11], [7, 11], [6, 11], [5, 11], [4, 11], [3, 11],
+  [1, 9], [1, 8], [1, 7], [1, 6], [1, 5], [1, 4], [1, 3],
+  [3, 1], [4, 1], [5, 1]
 ]
 
-// 外圈 56 格的圆心（绝对格 0..55）
-export const RING = ARMS.flat().map(([col, row]) => gridPoint(col, row))
+export const RING = RING_GRID.map(([col, row]) => gridPoint(col, row))
 
-// 四个斜角格：轨道在角落「切角」的位置，4 人局正好是各队飞机场
-export const CORNER_CELLS = new Set([7, 21, 35, 49])
+/**
+ * 四角的斜切格：压在机库角上（对应参考图的切角三角），
+ * 让方形边框看起来是连成一体的一圈。ring 表示它承接的轨道格序号。
+ */
+export const CORNER_CUTS = [
+  { col: 1, row: 2, ring: 25 },
+  { col: 2, row: 1, ring: 24 },
+  { col: 10, row: 1, ring: 3 },
+  { col: 11, row: 2, ring: 4 },
+  { col: 11, row: 10, ring: 10 },
+  { col: 10, row: 11, ring: 11 },
+  { col: 2, row: 11, ring: 17 },
+  { col: 1, row: 10, ring: 18 }
+]
 
 export function cellCenter(index) {
   return RING[((index % TRACK) + TRACK) % TRACK]
 }
 
-// 臂编号：0 上 / 1 右 / 2 下 / 3 左（由起飞点推出）
-export function armOf(seat, players) {
-  return ((Math.round(startCell(seat, players) / 14) % 4) + 4) % 4
-}
-
-// 臂中线：单位向量（指向中心）+ 通道第一格
-const ARM_AXIS = [
-  { unit: { x: 0, y: 1 }, from: [7, 1] },
-  { unit: { x: -1, y: 0 }, from: [13, 7] },
-  { unit: { x: 0, y: -1 }, from: [7, 13] },
-  { unit: { x: 1, y: 0 }, from: [1, 7] }
+// 四角 3×3 大机库（左上 / 右上 / 右下 / 左下）——座位 0..3 依次对应
+const BASE_CORNERS = [
+  { col: 0, row: 0 },
+  { col: 10, row: 0 },
+  { col: 10, row: 10 },
+  { col: 0, row: 10 }
 ]
 
-/** 终点通道的 6 个落点：沿臂中线通向中心圆盘；人数 >4 时中线由两队共用，各自向两侧错开。 */
-export function homeLaneSlots(seat, players) {
-  const axis = ARM_AXIS[armOf(seat, players)]
-  const from = gridPoint(axis.from[0], axis.from[1])
-  const edge = { x: CENTER - axis.unit.x * GOAL_RADIUS, y: CENTER - axis.unit.y * GOAL_RADIUS }
-  const base = []
-  for (let index = 0; index < HOME_LANE; index += 1) {
-    const t = (index * 0.96) / (HOME_LANE - 1)
-    base.push({ x: from.x + (edge.x - from.x) * t, y: from.y + (edge.y - from.y) * t })
-  }
-  if (players <= 4) return base
-  const mates = []
-  for (let other = 0; other < players; other += 1)
-    if (armOf(other, players) === armOf(seat, players)) mates.push(other)
-  const offset = (mates.indexOf(seat) - (mates.length - 1) / 2) * 34
-  const px = -axis.unit.y
-  const py = axis.unit.x
-  return base.map((point) => ({ x: point.x + px * offset, y: point.y + py * offset }))
-}
-
-/** 大本营扇区中心角：人数 ≤4 时对准各自的臂，人多时按起飞点比例均分圆周。 */
-export function sectorAngle(seat, players) {
-  if (players <= 4) {
-    const arm = armOf(seat, players)
-    return ((-90 + arm * 90) * Math.PI) / 180
-  }
-  return ((-90 + (startCell(seat, players) / TRACK) * 360) * Math.PI) / 180
-}
-
-/** 已到家飞机在大本营扇区里的停机位。 */
-export function homeSlot(seat, players, index) {
-  const angle = sectorAngle(seat, players)
-  const radius = 20 + index * 10
-  return { x: CENTER + Math.cos(angle) * radius, y: CENTER + Math.sin(angle) * radius }
-}
-
-/** 中心大本营的扇区路径（扇区朝向各自的臂）。 */
-export function goalWedges(players) {
-  const half = Math.PI / Math.max(1, players)
-  const result = []
-  for (let seat = 0; seat < players; seat += 1) {
-    const mid = sectorAngle(seat, players)
-    const x1 = CENTER + Math.cos(mid - half) * GOAL_RADIUS
-    const y1 = CENTER + Math.sin(mid - half) * GOAL_RADIUS
-    const x2 = CENTER + Math.cos(mid + half) * GOAL_RADIUS
-    const y2 = CENTER + Math.sin(mid + half) * GOAL_RADIUS
-    result.push({ seat, path: `M ${CENTER} ${CENTER} L ${x1} ${y1} A ${GOAL_RADIUS} ${GOAL_RADIUS} 0 0 1 ${x2} ${y2} Z` })
-  }
-  return result
-}
-
-// 人数 ≤4 时机库所在的四角 block（左上 / 右上 / 右下 / 左下）
-const CORNER_RECTS = [
-  { x: MARGIN, y: MARGIN },
-  { x: MARGIN + CELL * 10, y: MARGIN },
-  { x: MARGIN + CELL * 10, y: MARGIN + CELL * 10 },
-  { x: MARGIN, y: MARGIN + CELL * 10 }
-]
-
-/** 机库：位置、停机位、队名标签。人数 ≤4 用四角大机库，更多人围成一圈。 */
+/**
+ * 机库信息：位置、停机位、队名标签位置。
+ * 只有前 4 队有独立机库（放在四角）；5 人以上多出来的队伍直接从各自起飞格出发。
+ */
 export function hangarInfo(seat, players, planesPerPlayer) {
-  let rect
-  let size = HANGAR_SIZE
-  if (players <= 4) {
-    rect = CORNER_RECTS[armOf(seat, players)]
-  } else {
-    size = 140
-    const angle = sectorAngle(seat, players)
-    const radius = CELL * (GRID / 2) + size / 2 + 8
-    rect = {
-      x: CENTER + Math.cos(angle) * radius - size / 2,
-      y: CENTER + Math.sin(angle) * radius - size / 2
-    }
-  }
-  const big = size >= HANGAR_SIZE
+  const big = seat < 4
+  if (!big) return null
+  const anchor = BASE_CORNERS[seat]
+  const size = HANGAR_SIZE
+  const rect = { x: MARGIN + anchor.col * CELL, y: MARGIN + anchor.row * CELL, size }
   const columns = planesPerPlayer <= 4 ? 2 : 3
   const rows = Math.ceil(planesPerPlayer / columns)
-  const gap = big ? 66 : 40
-  const circleR = big ? 30 : 19
+  const gap = 62
+  const circleR = 27
   const cx = rect.x + size / 2
-  const cy = rect.y + size / 2 + (big ? 16 : 8)
+  const cy = rect.y + size / 2 + 14
   const slots = []
   for (let index = 0; index < planesPerPlayer; index += 1) {
     const row = Math.floor(index / columns)
@@ -149,21 +95,99 @@ export function hangarInfo(seat, players, planesPerPlayer) {
     })
   }
   return {
-    rect: { x: rect.x, y: rect.y, size },
+    rect,
+    // 机库底板略微外扩并用大圆角，让边框两端的角格被机库"切"住（参考图的切角效果）
+    plate: { x: rect.x - 6, y: rect.y - 6, size: size + 12 },
     slots,
-    label: { x: cx, y: rect.y + (big ? 36 : 24) },
+    label: { x: cx, y: rect.y + 30 },
     circleR,
-    labelSize: big ? 26 : 15
+    labelSize: 24,
+    big: true
   }
 }
 
-/** 飞机场之间的穿心虚线（去重）。 */
+/** 机库内角（对角通道的起点）：取机库方块里离棋盘中心最近的那个角。 */
+export function hangarInnerCorner(seat, players) {
+  const info = hangarInfo(seat, players, 1)
+  const { x, y, size } = info.rect
+  const corners = [
+    { x, y },
+    { x: x + size, y },
+    { x, y: y + size },
+    { x: x + size, y: y + size }
+  ]
+  let best = corners[0]
+  let bestDistance = Infinity
+  for (const corner of corners) {
+    const distance = Math.hypot(corner.x - CENTER, corner.y - CENTER)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = corner
+    }
+  }
+  return best
+}
+
+/**
+ * 终点通道：
+ *  - 1–4 队：从自家机库内角沿对角彩条斜插进中心大本营（与参考图一致）。
+ *  - 5 队以上：没有独立机库，从起飞格沿半径方向直线进中心。
+ */
+export function homeLaneSlots(seat, players) {
+  const from = seat < 4 ? hangarInnerCorner(seat, players) : cellCenter(startCell(seat, players))
+  const dx = CENTER - from.x
+  const dy = CENTER - from.y
+  const length = Math.hypot(dx, dy) || 1
+  const ux = dx / length
+  const uy = dy / length
+  const start = seat < 4 ? CELL * 1.15 : CELL * 0.7
+  const end = length - GOAL_RADIUS - LANE_CELL * 0.4
+  const slots = []
+  for (let index = 0; index < HOME_LANE; index += 1) {
+    const t = index / (HOME_LANE - 1)
+    const d = start + (end - start) * t
+    slots.push({ x: from.x + ux * d, y: from.y + uy * d })
+  }
+  return slots
+}
+
+/** 大本营扇区中心角：1–4 队朝向自家机库，5 队以上朝向自己的起飞格。 */
+export function sectorAngle(seat, players) {
+  if (seat < 4) {
+    const anchor = BASE_CORNERS[seat]
+    const point = gridPoint(anchor.col + 1.5, anchor.row + 1.5)
+    return Math.atan2(point.y - CENTER, point.x - CENTER)
+  }
+  const point = cellCenter(startCell(seat, players))
+  return Math.atan2(point.y - CENTER, point.x - CENTER)
+}
+/** 已到家飞机在大本营里的停机位。 */
+export function homeSlot(seat, players, index) {
+  const angle = sectorAngle(seat, players)
+  const radius = 18 + index * 11
+  return { x: CENTER + Math.cos(angle) * radius, y: CENTER + Math.sin(angle) * radius }
+}
+
+/** 中心大本营的扇区路径。 */
+export function goalWedges(players) {
+  const half = Math.PI / Math.max(1, players)
+  return Array.from({ length: players }, (_, seat) => {
+    const mid = sectorAngle(seat, players)
+    const x1 = CENTER + Math.cos(mid - half) * GOAL_RADIUS
+    const y1 = CENTER + Math.sin(mid - half) * GOAL_RADIUS
+    const x2 = CENTER + Math.cos(mid + half) * GOAL_RADIUS
+    const y2 = CENTER + Math.sin(mid + half) * GOAL_RADIUS
+    return { seat, path: `M ${CENTER} ${CENTER} L ${x1} ${y1} A ${GOAL_RADIUS} ${GOAL_RADIUS} 0 0 1 ${x2} ${y2} Z` }
+  })
+}
+
+/** 飞机场之间的穿心航线（去重）。 */
 export function airportLines(players) {
   const lines = []
   const seen = new Set()
   for (let seat = 0; seat < players; seat += 1) {
     const from = airportCell(seat, players)
-    const to = (from + TRACK / 2) % TRACK
+    const to = (from + FLY_DISTANCE) % TRACK
     const key = [from, to].sort((a, b) => a - b).join('-')
     if (seen.has(key)) continue
     seen.add(key)
@@ -172,17 +196,25 @@ export function airportLines(players) {
   return lines
 }
 
-/** 背景装饰：云朵（画在棋盘四周的天空里）。 */
+/** 天空装饰：云朵。 */
 export const CLOUDS = [
-  { x: 150, y: 84, scale: 1 },
-  { x: 990, y: 118, scale: 0.8 },
-  { x: 118, y: 1038, scale: 0.85 },
-  { x: 1005, y: 1062, scale: 1 },
-  { x: 705, y: 52, scale: 0.7 }
+  { x: 156, y: 128, scale: 1 },
+  { x: 742, y: 150, scale: 0.8 },
+  { x: 140, y: 762, scale: 0.85 },
+  { x: 762, y: 748, scale: 1 },
+  { x: 452, y: 92, scale: 0.7 }
 ]
 
-/** 装饰小飞机剪影（天空里飞过的那种）。 */
+/** 天空装饰：飞行中的小飞机（放在中间的空白区）。 */
 export const DECOR_PLANES = [
-  { x: 336, y: 94, angle: -14, scale: 1 },
-  { x: 796, y: 1082, angle: 166, scale: 0.9 }
+  { x: 186, y: 306, angle: -18, scale: 0.8 },
+  { x: 704, y: 596, angle: 162, scale: 0.75 },
+  { x: 452, y: 214, angle: 22, scale: 0.5 }
+]
+
+/** 天空装饰：虚线航迹。 */
+export const TRAILS = [
+  'M 150,182 C 240,120 330,206 420,168',
+  'M 470,700 C 560,748 640,672 742,712',
+  'M 604,232 C 664,286 700,232 764,268'
 ]
